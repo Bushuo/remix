@@ -29,6 +29,28 @@ export function getDependenciesToBundle(...pkg: string[]): string[] {
   return Array.from(aggregatedDeps);
 }
 
+function tryResolvePackageByName(pkg: string): string | null {
+  try {
+    return require.resolve(pkg);
+  } catch (err: any) {
+    switch (err?.code) {
+      case "ERR_PACKAGE_PATH_NOT_EXPORTED":
+        // happens when a dependency has no main field and can not be resolved just by its name
+        console.error(`Package "${pkg}"'s "package.json" does not provide a "main" field. 
+        Please exclude subdependencies yourself!`);
+        break;
+
+      case "ERR_MODULE_NOT_FOUND":
+        // happens when a dependency can not be resolved such as `@types/*`
+        console.error(`Package "${pkg}" could not be resolved!`);
+        break;
+      default:
+        break;
+    }
+  }
+  return null;
+}
+
 function getPackageDependenciesRecursive(
   pkg: string,
   aggregatedDeps: Set<string>,
@@ -36,10 +58,15 @@ function getPackageDependenciesRecursive(
 ): void {
   visitedPackages.add(pkg);
 
-  let pkgPath = require.resolve(pkg);
-  let lastIndexOfPackageName = pkgPath.lastIndexOf(pkg);
+  let pkgPath = tryResolvePackageByName(pkg);
+  if (!pkgPath) {
+    return;
+  }
+
+  let pkgLocation = `node_modules/${pkg}`;
+  let lastIndexOfPackageName = pkgPath.lastIndexOf(pkgLocation);
   if (lastIndexOfPackageName !== -1) {
-    pkgPath = pkgPath.substring(0, lastIndexOfPackageName);
+    pkgPath = pkgPath.substring(0, lastIndexOfPackageName + pkgLocation.length);
   }
   let pkgJson = path.join(pkgPath, "package.json");
   if (!fs.existsSync(pkgJson)) {
